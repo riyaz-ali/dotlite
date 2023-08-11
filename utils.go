@@ -4,11 +4,15 @@ import (
 	"io"
 )
 
-func min(a, b int) int {
-	if a > b {
-		return b
+func min(val ...int) int {
+	var m = val[0]
+	for _, i := range val[1:] {
+		if i < m {
+			m = i
+		}
 	}
-	return a
+
+	return m
 }
 
 // Varint computes a 64-bit integer value from the given source.

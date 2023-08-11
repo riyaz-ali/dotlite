@@ -55,6 +55,7 @@ func newNode(file *File, page *Page) (_ *TreeNode, err error) {
 		}
 	}
 
+	// TODO(@riyaz): using unsafe.Pointer can we directly map []int16 to the underlying page buffer?
 	var cells = make([]int16, node.header.NumCells)
 	for i := 0; i < len(cells); i++ {
 		var cell int16
@@ -80,7 +81,7 @@ type Cell struct {
 	data []byte // cell data buffer
 }
 
-func (cell *Cell) Reader() io.Reader {
+func (cell *Cell) Reader() *bytes.Reader {
 	return bytes.NewReader(cell.data)
 }
 
@@ -135,6 +136,7 @@ func (node *TreeNode) LoadCell(pos int) (_ *Cell, err error) {
 			overflowsz = P - localsz
 		}
 
+		// TODO(@riyaz): directly reference the underlying page buffer if there is no overflow?
 		var payload = make([]byte, localsz)
 		if _, err = io.ReadFull(node.page, payload); err != nil {
 			return nil, err
@@ -146,12 +148,14 @@ func (node *TreeNode) LoadCell(pos int) (_ *Cell, err error) {
 				return nil, err
 			}
 
-			var overflow []byte
-			if overflow, err = node.readOverflow(overflowPage, overflowsz); err != nil {
+			var usable = int(node.file.Header.PageSize - uint16(node.file.Header.PageReserved))
+			var buffer = bytes.NewBuffer(payload)
+			_, err = io.Copy(buffer, newOverflowReader(node.file.Pager, overflowPage, usable, overflowsz))
+			if err != nil {
 				return nil, err
 			}
 
-			payload = append(payload, overflow...)
+			payload = buffer.Bytes()
 		}
 
 		if len(payload) != P {
@@ -163,45 +167,6 @@ func (node *TreeNode) LoadCell(pos int) (_ *Cell, err error) {
 	default:
 		panic(fmt.Errorf("unknow node type: %v", k))
 	}
-}
-
-func (node *TreeNode) readOverflow(pageNum int32, size int) (_ []byte, err error) {
-	var usable = int(node.file.Header.PageSize - uint16(node.file.Header.PageReserved))
-	var buffer = make([]byte, 0, size)
-
-	for pageNum != 0 {
-		var sizeLeft = cap(buffer) - len(buffer)
-		if sizeLeft == 0 {
-			return nil, fmt.Errorf("read all %d bytes but still have overflow page %d", size, pageNum)
-		}
-
-		var page *Page
-		if page, err = node.file.Pager.ReadPage(int(pageNum)); err != nil {
-			return nil, err
-		}
-
-		// next page in the chain
-		if err = binary.Read(page, binary.BigEndian, &pageNum); err != nil {
-			return nil, err
-		}
-
-		var buf = make([]byte, min(sizeLeft, usable-4))
-		if _, err = page.Read(buf); err != nil {
-			return nil, err
-		}
-
-		buffer = append(buffer, buf...)
-	}
-
-	if left := cap(buffer) - len(buffer); left != 0 {
-		return nil, fmt.Errorf("ran out of overflow pages with %d of %d bytes left unread", left, size)
-	}
-
-	if len(buffer) != size {
-		return nil, fmt.Errorf("read %d overflow bytes instead of %d", len(buffer), size)
-	}
-
-	return buffer, nil
 }
 
 // Tree represents a B-Tree in the sqlite database file

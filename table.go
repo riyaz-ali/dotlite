@@ -1,10 +1,8 @@
 package dotlite
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"strings"
 )
 
@@ -95,10 +93,7 @@ func (table *Table) Columns() []*Column { return table.columns }
 // ForEach iterates over each row in the table in order, invoking callback.
 func (table *Table) ForEach(fn func([]Value) error) error {
 	return table.tree.Walk(func(cell *Cell) (err error) {
-		var buffer = new(bytes.Buffer)
-		if _, err = io.Copy(buffer, cell.Reader()); err != nil {
-			return err
-		}
+		var buffer = cell.Reader()
 
 		var types []int
 		{ // read record header and determine serial types of all contained values
@@ -201,7 +196,7 @@ func (table *Table) ForEach(fn func([]Value) error) error {
 
 				// if the type is TEXT
 				if t >= 13 && t%2 != 0 {
-					var buf = make([]byte, (t-12)/2)
+					var buf = make([]byte, (t-13)/2)
 					if _, err = buffer.Read(buf); err != nil {
 						return err
 					}
