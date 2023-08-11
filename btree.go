@@ -99,7 +99,7 @@ func (node *TreeNode) LoadCell(pos int) (_ *Cell, err error) {
 
 		var rowid int64
 		if rowid, err = Varint(node.page); err != nil {
-			return nil, fmt.Errorf("error decoding rowid: page=%d\tcell=%d: %v", node.page.ID, pos, err)
+			return nil, fmt.Errorf("error decoding rowid: page=%d\tcell=%d", node.page.ID, pos)
 		}
 
 		return &Cell{LeftChild: left, Rowid: rowid}, nil
@@ -108,11 +108,11 @@ func (node *TreeNode) LoadCell(pos int) (_ *Cell, err error) {
 		var size, rowid int64
 
 		if size, err = Varint(node.page); err != nil {
-			return nil, fmt.Errorf("error decoding size: page=%d\tcell=%d: %v", node.page.ID, pos, err)
+			return nil, fmt.Errorf("error decoding size: page=%d\tcell=%d", node.page.ID, pos)
 		}
 
 		if rowid, err = Varint(node.page); err != nil {
-			return nil, fmt.Errorf("error decoding rowid: page=%d\tcell=%d: %v", node.page.ID, pos, err)
+			return nil, fmt.Errorf("error decoding rowid: page=%d\tcell=%d", node.page.ID, pos)
 		}
 
 		P := int(size)                                                              // the payload size
@@ -213,8 +213,8 @@ type Tree struct {
 }
 
 // NewTree creates a new Tree using the provided pager, with page at r as the root
-func NewTree(file *File, pager *Pager, root int) (_ *Tree, err error) {
-	return &Tree{file: file, pager: pager, root: root}, nil
+func NewTree(file *File, pager *Pager, root int) (_ *Tree) {
+	return &Tree{file: file, pager: pager, root: root}
 }
 
 // Walk walks the tree using in-order traversal, invoking user-defined fn for each cell in all the nodes of the tree.

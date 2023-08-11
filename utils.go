@@ -16,7 +16,7 @@ func min(a, b int) int {
 // It differs slightly from binary.ReadVarint and follows sqlite's logic for
 // computing the integer value from the bytes.
 //
-// see: https://www.sqlite.org/fileformat.html#b_tree_pages description for more details
+// see: https://www.sqlite.org/fileformat.html#varint description for more details
 func Varint(r io.ByteReader) (_ int64, err error) {
 	var b byte
 	var val uint64

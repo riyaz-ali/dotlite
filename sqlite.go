@@ -146,3 +146,53 @@ func (f *File) Version() int { return int(f.Header.LibraryVersion) }
 
 // Close closes the underlying file handle
 func (f *File) Close() error { return f.closer.Close() }
+
+// Schema returns a list of all tables and indexes found in the file.
+// It parses sqlite_schema table, found at database page 1.
+//
+// see: https://www.sqlite.org/fileformat.html#storage_of_the_sql_database_schema
+func (f *File) Schema() (_ []*Table, err error) {
+	var tree = NewTree(f, f.Pager, 1)
+	var schemaTable = NewTable("sqlite_schema", tree, []*Column{
+		{Name: "type", Type: "text", Affinity: TEXT},
+		{Name: "name", Type: "text", Affinity: TEXT},
+		{Name: "tbl_name", Type: "text", Affinity: TEXT},
+		{Name: "rootpage", Type: "integer", Affinity: INTEGER},
+		{Name: "sql", Type: "text", Affinity: TEXT},
+	})
+
+	var tables []*Table
+	err = schemaTable.ForEach(func(values []Value) (err error) {
+		typ, name, root, sql := values[1].(string), values[2].(string), values[4].(int64), ""
+		if len(values) == 6 && values[5] != nil {
+			sql = values[5].(string)
+		}
+
+		if typ == "table" {
+			var table *Table
+			if table, err = parseTable(name, NewTree(f, f.Pager, int(root)), sql); err != nil {
+				return err
+			}
+			tables = append(tables, table)
+		}
+
+		return nil
+	})
+
+	return tables, err
+}
+
+func (f *File) ForEach(name string, fn func([]Value) error) (err error) {
+	var tables []*Table
+	if tables, err = f.Schema(); err != nil {
+		return err
+	}
+
+	for _, table := range tables {
+		if table.Name() == name {
+			return table.ForEach(fn)
+		}
+	}
+
+	return fmt.Errorf("table with name %q not found", name)
+}
