@@ -162,7 +162,7 @@ func (f *File) Schema() (_ []*Table, err error) {
 	})
 
 	var tables []*Table
-	err = schemaTable.ForEach(func(values []Value) (err error) {
+	err = schemaTable.ForEach(func(values []any) (err error) {
 		typ, name, root, sql := values[1].(string), values[2].(string), values[4].(int64), ""
 		if len(values) == 6 && values[5] != nil {
 			sql = values[5].(string)
@@ -182,17 +182,26 @@ func (f *File) Schema() (_ []*Table, err error) {
 	return tables, err
 }
 
-func (f *File) ForEach(name string, fn func([]Value) error) (err error) {
+func (f *File) Table(name string) (_ *Table, err error) {
 	var tables []*Table
 	if tables, err = f.Schema(); err != nil {
-		return err
+		return nil, err
 	}
 
 	for _, table := range tables {
 		if table.Name() == name {
-			return table.ForEach(fn)
+			return table, nil
 		}
 	}
 
-	return fmt.Errorf("table with name %q not found", name)
+	return nil, fmt.Errorf("table with name %q not found", name)
+}
+
+func (f *File) ForEach(name string, fn func([]any) error) (err error) {
+	var table *Table
+	if table, err = f.Table(name); err != nil {
+		return err
+	}
+
+	return table.ForEach(fn)
 }

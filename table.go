@@ -6,9 +6,6 @@ import (
 	"strings"
 )
 
-// Value represents individual cell values in a table
-type Value any
-
 // Affinity of a column is the recommended type for data stored in that column.
 // see: https://www.sqlite.org/datatype3.html#affinity
 type Affinity int
@@ -91,53 +88,51 @@ func (table *Table) Name() string { return table.name }
 func (table *Table) Columns() []*Column { return table.columns }
 
 // ForEach iterates over each row in the table in order, invoking callback.
-func (table *Table) ForEach(fn func([]Value) error) error {
+func (table *Table) ForEach(fn func([]any) error) error {
 	return table.tree.Walk(func(cell *Cell) (err error) {
-		var buffer = cell.Reader()
-
 		var types []int
 		{ // read record header and determine serial types of all contained values
 			var v int64 // reusable varint holder
 
-			var n = buffer.Len()
-			if v, err = Varint(buffer); err != nil {
+			var n = cell.Len()
+			if v, err = Varint(cell); err != nil {
 				return err
 			}
 
-			var headerSize = int(v) - (n - buffer.Len())
+			var headerSize = int(v) - (n - cell.Len())
 
 			for i := 0; i < headerSize; {
-				n = buffer.Len()
-				if v, err = Varint(buffer); err != nil {
+				n = cell.Len()
+				if v, err = Varint(cell); err != nil {
 					return err
 				}
-				i += n - buffer.Len()
+				i += n - cell.Len()
 				types = append(types, int(v))
 			}
 		}
 
-		var values = make([]Value, 1, len(types)+1)
+		var values = make([]any, 1, len(types)+1)
 		values[0] = cell.Rowid
 
 		for _, t := range types {
 			switch t {
 			case 0x01: // 8-bit twos-complement integer
 				var data int8
-				if err = binary.Read(buffer, binary.BigEndian, &data); err != nil {
+				if err = binary.Read(cell, binary.BigEndian, &data); err != nil {
 					return err
 				}
 				values = append(values, int64(data))
 
 			case 0x02: // 16-bit twos-complement integer
 				var data int16
-				if err = binary.Read(buffer, binary.BigEndian, &data); err != nil {
+				if err = binary.Read(cell, binary.BigEndian, &data); err != nil {
 					return err
 				}
 				values = append(values, int64(data))
 
 			case 0x03: // 24-bit twos-complement integer
 				var bs = make([]byte, 4)
-				if n, _ := buffer.Read(bs[1:]); n != 3 {
+				if n, _ := cell.Read(bs[1:]); n != 3 {
 					return fmt.Errorf("failed to decode 24-bit integer value")
 				}
 
@@ -148,14 +143,14 @@ func (table *Table) ForEach(fn func([]Value) error) error {
 
 			case 0x04: // 32-bit twos-complement integer
 				var data int32
-				if err = binary.Read(buffer, binary.BigEndian, &data); err != nil {
+				if err = binary.Read(cell, binary.BigEndian, &data); err != nil {
 					return err
 				}
 				values = append(values, int64(data))
 
 			case 0x05: // 48-bit twos-complement integer
 				var bs = make([]byte, 8)
-				if n, _ := buffer.Read(bs[2:]); n != 6 {
+				if n, _ := cell.Read(bs[2:]); n != 6 {
 					return fmt.Errorf("failed to decode 48-bit integer value")
 				}
 
@@ -166,14 +161,14 @@ func (table *Table) ForEach(fn func([]Value) error) error {
 
 			case 0x06: // 64-bit twos-complement integer
 				var data int64
-				if err = binary.Read(buffer, binary.BigEndian, &data); err != nil {
+				if err = binary.Read(cell, binary.BigEndian, &data); err != nil {
 					return err
 				}
 				values = append(values, data)
 
 			case 0x07: // IEEE 754-2008 64-bit floating point number
 				var data float64
-				if err = binary.Read(buffer, binary.BigEndian, &data); err != nil {
+				if err = binary.Read(cell, binary.BigEndian, &data); err != nil {
 					return err
 				}
 				values = append(values, data)
@@ -187,19 +182,13 @@ func (table *Table) ForEach(fn func([]Value) error) error {
 			default:
 				// if the type is BLOB
 				if t >= 12 && t%2 == 0 {
-					var buf = make([]byte, (t-12)/2)
-					if _, err = buffer.Read(buf); err != nil {
-						return err
-					}
+					var buf = cell.Region(int64((t - 12) / 2))
 					values = append(values, buf)
 				}
 
 				// if the type is TEXT
 				if t >= 13 && t%2 != 0 {
-					var buf = make([]byte, (t-13)/2)
-					if _, err = buffer.Read(buf); err != nil {
-						return err
-					}
+					var buf = cell.Region(int64((t - 13) / 2))
 
 					if table.tree.file.Header.TextEncoding == UTF8 {
 						var s = string(buf)

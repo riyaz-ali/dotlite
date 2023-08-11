@@ -78,11 +78,40 @@ type Cell struct {
 	Size      int64 // size of the byte payload (including overflow)
 	Rowid     int64 // rowid of the row contained in this cell; valid only for b-tree holding tables
 
-	data []byte // cell data buffer
+	s []byte // cell data buffer
+	i int64
 }
 
-func (cell *Cell) Reader() *bytes.Reader {
-	return bytes.NewReader(cell.data)
+func (cell *Cell) Len() int {
+	if cell.i >= int64(len(cell.s)) {
+		return 0
+	}
+	return int(int64(len(cell.s)) - cell.i)
+}
+
+func (cell *Cell) Read(b []byte) (n int, err error) {
+	if cell.i >= int64(len(cell.s)) {
+		return 0, io.EOF
+	}
+
+	n = copy(b, cell.s[cell.i:])
+	cell.i += int64(n)
+	return
+}
+
+func (cell *Cell) ReadByte() (byte, error) {
+	if cell.i >= int64(len(cell.s)) {
+		return 0, io.EOF
+	}
+	b := cell.s[cell.i]
+	cell.i++
+	return b, nil
+}
+
+func (cell *Cell) Region(i int64) []byte {
+	var b = cell.s[cell.i : cell.i+i]
+	cell.i += i
+	return b
 }
 
 func (node *TreeNode) LoadCell(pos int) (_ *Cell, err error) {
@@ -137,20 +166,23 @@ func (node *TreeNode) LoadCell(pos int) (_ *Cell, err error) {
 		}
 
 		// TODO(@riyaz): directly reference the underlying page buffer if there is no overflow?
-		var payload = make([]byte, localsz)
-		if _, err = io.ReadFull(node.page, payload); err != nil {
-			return nil, err
-		}
+		var payload []byte
 
-		if overflowsz != 0 {
+		if overflowsz == 0 {
+			payload = node.page.Region(int64(localsz))
+		} else {
+			var buffer bytes.Buffer
+			if _, err = io.CopyN(&buffer, node.page, int64(localsz)); err != nil {
+				return nil, err
+			}
+
 			var overflowPage int32
 			if err = binary.Read(node.page, binary.BigEndian, &overflowPage); err != nil {
 				return nil, err
 			}
 
 			var usable = int(node.file.Header.PageSize - uint16(node.file.Header.PageReserved))
-			var buffer = bytes.NewBuffer(payload)
-			_, err = io.Copy(buffer, newOverflowReader(node.file.Pager, overflowPage, usable, overflowsz))
+			_, err = io.Copy(&buffer, newOverflowReader(node.file.Pager, overflowPage, usable, overflowsz))
 			if err != nil {
 				return nil, err
 			}
@@ -162,7 +194,7 @@ func (node *TreeNode) LoadCell(pos int) (_ *Cell, err error) {
 			return nil, fmt.Errorf("read %d payload bytes instead of %d", len(payload), P)
 		}
 
-		return &Cell{Size: int64(P), Rowid: rowid, data: payload}, err
+		return &Cell{Size: int64(P), Rowid: rowid, s: payload, i: 0}, err
 
 	default:
 		panic(fmt.Errorf("unknow node type: %v", k))
