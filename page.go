@@ -89,13 +89,8 @@ func (pager *Pager) ReadPage(i int) (_ *Page, err error) {
 		return nil, err
 	}
 
-	var n int
-	if n, err = pager.file.Read(buf); err != nil {
+	if _, err = io.ReadFull(pager.file, buf); err != nil {
 		return nil, err
-	}
-
-	if n < len(buf) {
-		return nil, fmt.Errorf("read fewer bytes than page size")
 	}
 
 	return &Page{s: buf, i: 0, ID: i}, nil

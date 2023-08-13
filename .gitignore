@@ -190,5 +190,3 @@ fabric.properties
 # ---------- - - - - -
 # add custom ignore rules below this line
 # ---------- - - - - -
-
-testdata/

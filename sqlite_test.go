@@ -1,0 +1,87 @@
+package dotlite
+
+import (
+	"testing"
+)
+
+func open(t *testing.T, name string) *File {
+	var file, err = OpenFile(name)
+	if err != nil {
+		t.Errorf("failed to open file: %v", err)
+	}
+
+	return file
+}
+
+func TestOpen(t *testing.T) {
+	var file = open(t, "testdata/chinook.db")
+	defer file.Close()
+
+	if sz := file.PageSize(); sz != 1024 {
+		t.Errorf("expected page size to be %d; got %d", 1024, sz)
+	}
+
+	if ver := file.Version(); ver != 3036000 {
+		t.Errorf("expected library version to be %d; got %d", 3036000, ver)
+	}
+
+	if enc := file.Encoding(); enc != UTF8 {
+		t.Errorf("expected encoding to be %d; got %d", UTF8, enc)
+	}
+}
+
+func TestOpen_invalid_magic(t *testing.T) {
+	if _, err := OpenFile("testdata/not-a-database.txt"); err == nil {
+		t.Errorf("expected invalid magic error")
+	}
+}
+
+func TestOpen_size_is_computed(t *testing.T) {
+	// 4 bytes starting at position 28 are zeroed
+	var file = open(t, "testdata/chinook-no-size.db")
+	defer file.Close()
+
+	if sz := file.NumPages(); sz != 1042 {
+		t.Errorf("expected page count to be %d; got %d", 1042, sz)
+	}
+}
+
+func TestSchema(t *testing.T) {
+	var file = open(t, "testdata/chinook.db")
+	defer file.Close()
+
+	tables, err := file.Schema()
+	if err != nil {
+		t.Errorf("failed to determine schema: %v", err)
+	}
+
+	if tl := len(tables); tl != 11 {
+		t.Errorf("expected %d tables; got %d", 11, tl)
+	}
+}
+
+func TestSchema_find_table(t *testing.T) {
+	var file = open(t, "testdata/chinook.db")
+	defer file.Close()
+
+	if _, err := file.Table("Album"); err != nil {
+		t.Error(err)
+	}
+
+	if table, err := file.Table("NotExist"); err == nil || table != nil {
+		t.Fail()
+	}
+}
+
+func TestOverflow_database(t *testing.T) {
+	var file = open(t, "testdata/overflow.db")
+	defer file.Close()
+
+	var err = file.ForEach("x", func(_ []any) error {
+		return nil
+	})
+
+	if err != nil {
+		t.Error(err)
+	}
+}
