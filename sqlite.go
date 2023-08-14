@@ -151,55 +151,45 @@ func (f *File) Close() error { return f.closer.Close() }
 // It parses sqlite_schema table, found at database page 1.
 //
 // see: https://www.sqlite.org/fileformat.html#storage_of_the_sql_database_schema
-func (f *File) Schema() (_ []*Table, err error) {
+func (f *File) Schema() (_ []*Object, err error) {
 	var tree = NewTree(f, f.Pager, 1)
-	var schemaTable = NewTable("sqlite_schema", tree, []*Column{
-		{Name: "type", Type: "text", Affinity: TEXT},
-		{Name: "name", Type: "text", Affinity: TEXT},
-		{Name: "tbl_name", Type: "text", Affinity: TEXT},
-		{Name: "rootpage", Type: "integer", Affinity: INTEGER},
-		{Name: "sql", Type: "text", Affinity: TEXT},
-	})
+	var schemaTable = NewObject("sqlite_schema", "CREATE TABLE sqlite_schema(type,name,tbl_name,rootpage,sql)", tree)
 
-	var tables []*Table
-	err = schemaTable.ForEach(func(values []any) (err error) {
-		typ, name, root, sql := values[1].(string), values[2].(string), values[4].(int64), ""
-		if len(values) == 6 && values[5] != nil {
-			sql = values[5].(string)
-		}
+	var objects []*Object
+	err = schemaTable.ForEach(func(record *Record) (err error) {
+		var typ, _ = record.AsString(0)
+		var name, _ = record.AsString(1)
+		var root, _ = record.AsInt(3)
+		var sql, _ = record.AsString(4)
 
-		if typ == "table" {
-			var table *Table
-			if table, err = parseTable(name, NewTree(f, f.Pager, int(root)), sql); err != nil {
-				return err
-			}
-			tables = append(tables, table)
+		if typ == "table" || typ == "index" {
+			objects = append(objects, NewObject(name, sql, NewTree(f, f.Pager, root)))
 		}
 
 		return nil
 	})
 
-	return tables, err
+	return objects, err
 }
 
-func (f *File) Table(name string) (_ *Table, err error) {
-	var tables []*Table
-	if tables, err = f.Schema(); err != nil {
+func (f *File) Object(name string) (_ *Object, err error) {
+	var objects []*Object
+	if objects, err = f.Schema(); err != nil {
 		return nil, err
 	}
 
-	for _, table := range tables {
-		if table.Name() == name {
-			return table, nil
+	for _, obj := range objects {
+		if obj.Name() == name {
+			return obj, nil
 		}
 	}
 
-	return nil, fmt.Errorf("table with name %q not found", name)
+	return nil, fmt.Errorf("object with name %q not found", name)
 }
 
-func (f *File) ForEach(name string, fn func([]any) error) (err error) {
-	var table *Table
-	if table, err = f.Table(name); err != nil {
+func (f *File) ForEach(name string, fn func(*Record) error) (err error) {
+	var table *Object
+	if table, err = f.Object(name); err != nil {
 		return err
 	}
 

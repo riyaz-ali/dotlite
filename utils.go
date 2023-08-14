@@ -41,3 +41,20 @@ func Varint(r io.ByteReader) (_ int64, err error) {
 
 	return int64((val << 8) | uint64(b)), nil
 }
+
+// returns the size of serial type v, as defined under https://www.sqlite.org/fileformat.html#record_format
+func typeSize(v int64) int64 {
+	if v > 0 && v <= 4 {
+		return v
+	} else if v == 5 {
+		return 6
+	} else if v == 6 || v == 7 {
+		return 8
+	} else if v >= 12 && v%2 == 0 {
+		return (v - 12) / 2
+	} else if v >= 13 && v%2 == 1 {
+		return (v - 13) / 2
+	} else {
+		return 0
+	}
+}

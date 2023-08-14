@@ -3,6 +3,7 @@ package dotlite
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 )
@@ -108,10 +109,23 @@ func (cell *Cell) ReadByte() (byte, error) {
 	return b, nil
 }
 
-func (cell *Cell) Region(i int64) []byte {
-	var b = cell.s[cell.i : cell.i+i]
-	cell.i += i
-	return b
+func (cell *Cell) Seek(offset int64, whence int) (int64, error) {
+	var abs int64
+	switch whence {
+	case io.SeekStart:
+		abs = offset
+	case io.SeekCurrent:
+		abs = cell.i + offset
+	case io.SeekEnd:
+		abs = int64(len(cell.s)) + offset
+	default:
+		return 0, errors.New("invalid whence")
+	}
+	if abs < 0 {
+		return 0, errors.New("negative position")
+	}
+	cell.i = abs
+	return abs, nil
 }
 
 func (node *TreeNode) LoadCell(pos int) (_ *Cell, err error) {
@@ -145,27 +159,9 @@ func (node *TreeNode) LoadCell(pos int) (_ *Cell, err error) {
 			return nil, fmt.Errorf("error decoding rowid: page=%d\tcell=%d", node.page.ID, pos)
 		}
 
-		P := int(size)                                                              // the payload size
-		U := int(node.file.Header.PageSize - uint16(node.file.Header.PageReserved)) // the usable page size of pages in the database
-		X := U - 35                                                                 // maximum amount of payload that can be stored directly on the b-tree page
-
 		// size of local (embedded in tree) and overflow content
-		var localsz, overflowsz = P, 0
+		var total, localsz, overflowsz = node.computeBufferSize(int(size))
 
-		// if the payload size > max embed value, then we calculate the amount of spillage
-		if P > X {
-			M := ((U - 12) * 32 / 255) - 23
-			K := M + ((P - M) % (U - 4))
-
-			localsz = K
-			if K > X {
-				localsz = M
-			}
-
-			overflowsz = P - localsz
-		}
-
-		// TODO(@riyaz): directly reference the underlying page buffer if there is no overflow?
 		var payload []byte
 
 		if overflowsz == 0 {
@@ -190,15 +186,121 @@ func (node *TreeNode) LoadCell(pos int) (_ *Cell, err error) {
 			payload = buffer.Bytes()
 		}
 
-		if len(payload) != P {
-			return nil, fmt.Errorf("read %d payload bytes instead of %d", len(payload), P)
+		if len(payload) != total {
+			return nil, fmt.Errorf("read %d payload bytes instead of %d", len(payload), total)
 		}
 
-		return &Cell{Size: int64(P), Rowid: rowid, s: payload, i: 0}, err
+		return &Cell{Size: int64(total), Rowid: rowid, s: payload, i: 0}, err
+
+	case NodeIndexInt:
+		var left int32
+		if err = binary.Read(node.page, binary.BigEndian, &left); err != nil {
+			return nil, err
+		}
+
+		var size int64
+		if size, err = Varint(node.page); err != nil {
+			return nil, fmt.Errorf("error decoding size: page=%d\tcell=%d", node.page.ID, pos)
+		}
+
+		// size of local (embedded in tree) and overflow content
+		var total, localsz, overflowsz = node.computeBufferSize(int(size))
+
+		var payload []byte
+
+		if overflowsz == 0 {
+			payload = node.page.Region(int64(localsz))
+		} else {
+			var buffer bytes.Buffer
+			if _, err = io.CopyN(&buffer, node.page, int64(localsz)); err != nil {
+				return nil, err
+			}
+
+			var overflowPage int32
+			if err = binary.Read(node.page, binary.BigEndian, &overflowPage); err != nil {
+				return nil, err
+			}
+
+			var usable = int(node.file.Header.PageSize - uint16(node.file.Header.PageReserved))
+			_, err = io.Copy(&buffer, newOverflowReader(node.file.Pager, overflowPage, usable, overflowsz))
+			if err != nil {
+				return nil, err
+			}
+
+			payload = buffer.Bytes()
+		}
+
+		if len(payload) != total {
+			return nil, fmt.Errorf("read %d payload bytes instead of %d", len(payload), total)
+		}
+
+		return &Cell{LeftChild: left, Size: int64(total), s: payload, i: 0}, err
+
+	case NodeIndexLeaf:
+		var size int64
+		if size, err = Varint(node.page); err != nil {
+			return nil, fmt.Errorf("error decoding size: page=%d\tcell=%d", node.page.ID, pos)
+		}
+
+		// size of local (embedded in tree) and overflow content
+		var total, localsz, overflowsz = node.computeBufferSize(int(size))
+
+		var payload []byte
+
+		if overflowsz == 0 {
+			payload = node.page.Region(int64(localsz))
+		} else {
+			var buffer bytes.Buffer
+			if _, err = io.CopyN(&buffer, node.page, int64(localsz)); err != nil {
+				return nil, err
+			}
+
+			var overflowPage int32
+			if err = binary.Read(node.page, binary.BigEndian, &overflowPage); err != nil {
+				return nil, err
+			}
+
+			var usable = int(node.file.Header.PageSize - uint16(node.file.Header.PageReserved))
+			_, err = io.Copy(&buffer, newOverflowReader(node.file.Pager, overflowPage, usable, overflowsz))
+			if err != nil {
+				return nil, err
+			}
+
+			payload = buffer.Bytes()
+		}
+
+		if len(payload) != total {
+			return nil, fmt.Errorf("read %d payload bytes instead of %d", len(payload), total)
+		}
+
+		return &Cell{Size: int64(total), s: payload, i: 0}, err
 
 	default:
 		panic(fmt.Errorf("unknow node type: %v", k))
 	}
+}
+
+// computeBufferSize returns the computed size of local (embedded) and overflown payload
+func (node *TreeNode) computeBufferSize(P int) (total, local, overflow int) {
+	U := int(node.file.Header.PageSize - uint16(node.file.Header.PageReserved)) // the usable page size of pages in the database
+	X := U - 35                                                                 // maximum amount of payload that can be stored directly on the b-tree page
+
+	total, local, overflow = P, P, 0
+
+	// if the payload size > max embed value, then we calculate the amount of spillage
+	if P > X {
+		M := ((U - 12) * 32 / 255) - 23
+		K := M + ((P - M) % (U - 4))
+
+		local = K
+		if K > X {
+			local = M
+		}
+
+		overflow = P - local
+	}
+
+	return
 }
 
 // Tree represents a B-Tree in the sqlite database file

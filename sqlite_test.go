@@ -21,8 +21,8 @@ func TestOpen(t *testing.T) {
 		t.Errorf("expected page size to be %d; got %d", 1024, sz)
 	}
 
-	if ver := file.Version(); ver != 3036000 {
-		t.Errorf("expected library version to be %d; got %d", 3036000, ver)
+	if ver := file.Version(); ver != 3041000 {
+		t.Errorf("expected library version to be %d; got %d", 3041000, ver)
 	}
 
 	if enc := file.Encoding(); enc != UTF8 {
@@ -50,13 +50,13 @@ func TestSchema(t *testing.T) {
 	var file = open(t, "testdata/chinook.db")
 	defer file.Close()
 
-	tables, err := file.Schema()
+	objects, err := file.Schema()
 	if err != nil {
 		t.Errorf("failed to determine schema: %v", err)
 	}
 
-	if tl := len(tables); tl != 11 {
-		t.Errorf("expected %d tables; got %d", 11, tl)
+	if tl := len(objects); tl != 23 {
+		t.Errorf("expected %d objects; got %d", 23, tl)
 	}
 }
 
@@ -64,11 +64,11 @@ func TestSchema_find_table(t *testing.T) {
 	var file = open(t, "testdata/chinook.db")
 	defer file.Close()
 
-	if _, err := file.Table("Album"); err != nil {
+	if _, err := file.Object("Album"); err != nil {
 		t.Error(err)
 	}
 
-	if table, err := file.Table("NotExist"); err == nil || table != nil {
+	if table, err := file.Object("NotExist"); err == nil || table != nil {
 		t.Fail()
 	}
 }
@@ -77,7 +77,7 @@ func TestOverflow_database(t *testing.T) {
 	var file = open(t, "testdata/overflow.db")
 	defer file.Close()
 
-	var err = file.ForEach("x", func(_ []any) error {
+	var err = file.ForEach("x", func(_ *Record) error {
 		return nil
 	})
 
