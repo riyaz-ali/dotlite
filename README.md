@@ -40,6 +40,10 @@ You can use the same pattern to iterate over entries in an index or a [`WITHOUT 
 - [ ] Support for [rollback journal](https://www.sqlite.org/fileformat.html#the_rollback_journal)
 - [ ] Support for [Write-Ahead Log](https://www.sqlite.org/fileformat.html#the_write_ahead_log)
 
+## Credits
+
+This package was inspired by (and heavily borrows from) [`github.com/go-sqlite/sqlite3`](https://github.com/go-sqlite/sqlite3). Thanks!
+
 ------------------------------------
 
 MIT License Copyright (c) 2023 Riyaz Ali. Refer to [LICENSE](./LICENSE) for full text.
