@@ -153,7 +153,7 @@ func (f *File) Close() error { return f.closer.Close() }
 // see: https://www.sqlite.org/fileformat.html#storage_of_the_sql_database_schema
 func (f *File) Schema() (_ []*Object, err error) {
 	var tree = NewTree(f, f.Pager, 1)
-	var schemaTable = NewObject("sqlite_schema", "CREATE TABLE sqlite_schema(type,name,tbl_name,rootpage,sql)", tree)
+	var schemaTable = NewObject("sqlite_schema", "table", "CREATE TABLE sqlite_schema(type,name,tbl_name,rootpage,sql)", tree)
 
 	var objects []*Object
 	err = schemaTable.ForEach(func(record *Record) (err error) {
@@ -163,7 +163,7 @@ func (f *File) Schema() (_ []*Object, err error) {
 		var sql, _ = record.AsString(4)
 
 		if typ == "table" || typ == "index" {
-			objects = append(objects, NewObject(name, sql, NewTree(f, f.Pager, root)))
+			objects = append(objects, NewObject(name, typ, sql, NewTree(f, f.Pager, root)))
 		}
 
 		return nil
