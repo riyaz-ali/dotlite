@@ -14,7 +14,7 @@ Then, to iterate over entries from a table, do:
 ```golang
 // using Album table from testdata/chinook.db
 // with schema: CREATE TABLE Album (AlbumId INTEGER NOT NULL, Title TEXT, ArtistId INTEGER);
-var file, _ = dotlite.OpenFile"testdata/chinook.db")
+var file, _ = dotlite.OpenFile("testdata/chinook.db")
 defer file.Close()
 
 var err = file.ForEach("Album", func(rec *Record) error {
