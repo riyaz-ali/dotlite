@@ -162,16 +162,12 @@ func (node *TreeNode) LoadCell(pos int) (_ *Cell, err error) {
 		// size of local (embedded in tree) and overflow content
 		var total, localsz, overflowsz = node.computeBufferSize(int(size))
 
-		var payload []byte
+		var buffer bytes.Buffer
+		if _, err = io.CopyN(&buffer, node.page, int64(localsz)); err != nil {
+			return nil, err
+		}
 
-		if overflowsz == 0 {
-			payload = node.page.Region(int64(localsz))
-		} else {
-			var buffer bytes.Buffer
-			if _, err = io.CopyN(&buffer, node.page, int64(localsz)); err != nil {
-				return nil, err
-			}
-
+		if overflowsz > 0 {
 			var overflowPage int32
 			if err = binary.Read(node.page, binary.BigEndian, &overflowPage); err != nil {
 				return nil, err
@@ -182,15 +178,13 @@ func (node *TreeNode) LoadCell(pos int) (_ *Cell, err error) {
 			if err != nil {
 				return nil, err
 			}
-
-			payload = buffer.Bytes()
 		}
 
-		if len(payload) != total {
-			return nil, fmt.Errorf("read %d payload bytes instead of %d", len(payload), total)
+		if buffer.Len() != total {
+			return nil, fmt.Errorf("read %d payload bytes instead of %d", buffer.Len(), total)
 		}
 
-		return &Cell{Size: int64(total), Rowid: rowid, s: payload, i: 0}, err
+		return &Cell{Size: int64(total), Rowid: rowid, s: buffer.Bytes(), i: 0}, err
 
 	case NodeIndexInt:
 		var left int32
@@ -206,16 +200,12 @@ func (node *TreeNode) LoadCell(pos int) (_ *Cell, err error) {
 		// size of local (embedded in tree) and overflow content
 		var total, localsz, overflowsz = node.computeBufferSize(int(size))
 
-		var payload []byte
+		var buffer bytes.Buffer
+		if _, err = io.CopyN(&buffer, node.page, int64(localsz)); err != nil {
+			return nil, err
+		}
 
-		if overflowsz == 0 {
-			payload = node.page.Region(int64(localsz))
-		} else {
-			var buffer bytes.Buffer
-			if _, err = io.CopyN(&buffer, node.page, int64(localsz)); err != nil {
-				return nil, err
-			}
-
+		if overflowsz > 0 {
 			var overflowPage int32
 			if err = binary.Read(node.page, binary.BigEndian, &overflowPage); err != nil {
 				return nil, err
@@ -226,15 +216,13 @@ func (node *TreeNode) LoadCell(pos int) (_ *Cell, err error) {
 			if err != nil {
 				return nil, err
 			}
-
-			payload = buffer.Bytes()
 		}
 
-		if len(payload) != total {
-			return nil, fmt.Errorf("read %d payload bytes instead of %d", len(payload), total)
+		if buffer.Len() != total {
+			return nil, fmt.Errorf("read %d payload bytes instead of %d", buffer.Len(), total)
 		}
 
-		return &Cell{LeftChild: left, Size: int64(total), s: payload, i: 0}, err
+		return &Cell{LeftChild: left, Size: int64(total), s: buffer.Bytes(), i: 0}, err
 
 	case NodeIndexLeaf:
 		var size int64
@@ -245,16 +233,12 @@ func (node *TreeNode) LoadCell(pos int) (_ *Cell, err error) {
 		// size of local (embedded in tree) and overflow content
 		var total, localsz, overflowsz = node.computeBufferSize(int(size))
 
-		var payload []byte
+		var buffer bytes.Buffer
+		if _, err = io.CopyN(&buffer, node.page, int64(localsz)); err != nil {
+			return nil, err
+		}
 
-		if overflowsz == 0 {
-			payload = node.page.Region(int64(localsz))
-		} else {
-			var buffer bytes.Buffer
-			if _, err = io.CopyN(&buffer, node.page, int64(localsz)); err != nil {
-				return nil, err
-			}
-
+		if overflowsz > 0 {
 			var overflowPage int32
 			if err = binary.Read(node.page, binary.BigEndian, &overflowPage); err != nil {
 				return nil, err
@@ -265,15 +249,13 @@ func (node *TreeNode) LoadCell(pos int) (_ *Cell, err error) {
 			if err != nil {
 				return nil, err
 			}
-
-			payload = buffer.Bytes()
 		}
 
-		if len(payload) != total {
-			return nil, fmt.Errorf("read %d payload bytes instead of %d", len(payload), total)
+		if buffer.Len() != total {
+			return nil, fmt.Errorf("read %d payload bytes instead of %d", buffer.Len(), total)
 		}
 
-		return &Cell{Size: int64(total), s: payload, i: 0}, err
+		return &Cell{Size: int64(total), s: buffer.Bytes(), i: 0}, err
 
 	default:
 		panic(fmt.Errorf("unknow node type: %v", k))

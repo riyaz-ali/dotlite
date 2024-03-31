@@ -21,11 +21,19 @@ func min(val ...int) int {
 // computing the integer value from the bytes.
 //
 // see: https://www.sqlite.org/fileformat.html#varint description for more details
-func Varint(r io.ByteReader) (_ int64, err error) {
+func Varint(r io.Reader) (_ int64, err error) {
+	var readByte = func(r io.Reader) (_ byte, err error) {
+		var buf [1]byte
+		if _, err = r.Read(buf[:]); err == nil {
+			return buf[0], nil
+		}
+		return 0, err
+	}
+
 	var b byte
 	var val uint64
 	for i := 0; i < 8; i++ {
-		if b, err = r.ReadByte(); err != nil {
+		if b, err = readByte(r); err != nil {
 			return 0, err
 		}
 
@@ -35,7 +43,7 @@ func Varint(r io.ByteReader) (_ int64, err error) {
 		}
 	}
 
-	if b, err = r.ReadByte(); err != nil {
+	if b, err = readByte(r); err != nil {
 		return 0, err
 	}
 

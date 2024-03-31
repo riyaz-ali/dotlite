@@ -22,7 +22,7 @@ func newOverflowReader(pager *Pager, page int32, usable, size int) *overflow {
 }
 
 func (o *overflow) Read(buf []byte) (n int, err error) {
-	if (o.page == nil || o.page.Len() == 0 || o.left == 0) && o.next == 0 {
+	if (o.page == nil || o.page.Remaining() == 0 || o.left == 0) && o.next == 0 {
 		if o.left != 0 {
 			return 0, io.ErrUnexpectedEOF
 		}
@@ -30,7 +30,7 @@ func (o *overflow) Read(buf []byte) (n int, err error) {
 	}
 
 fetch:
-	if o.page == nil || o.page.Len() == 0 {
+	if o.page == nil || o.page.Remaining() == 0 {
 		if o.page, err = o.pager.ReadPage(int(o.next)); err != nil {
 			return 0, err
 		}

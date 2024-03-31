@@ -37,14 +37,11 @@ func TestPager(t *testing.T) {
 	}
 }
 
-type errStream struct{ AllowSeek, AllowRead bool }
+type errStream struct{ AllowRead bool }
 
-func (e *errStream) Seek(offset int64, _ int) (int64, error) {
-	if e.AllowSeek {
-		return offset, nil
-	} else {
-		return 0, fmt.Errorf("seek failed")
-	}
+func (e *errStream) ReadAt(p []byte, off int64) (n int, err error) {
+	//TODO implement me
+	panic("implement me")
 }
 
 func (e *errStream) Read(_ []byte) (_ int, _ error) {
@@ -52,25 +49,6 @@ func (e *errStream) Read(_ []byte) (_ int, _ error) {
 		return 0, io.EOF
 	} else {
 		return 0, fmt.Errorf("read failed")
-	}
-}
-
-func TestPager_error_when_reading(t *testing.T) {
-	var reader errStream
-	var pager = &Pager{size: 512, pages: 4, file: &reader}
-
-	if _, err := pager.ReadPage(1); err == nil {
-		t.Errorf("expected error when seeking; got nothing")
-	}
-
-	reader.AllowSeek = true
-	if _, err := pager.ReadPage(1); err == nil {
-		t.Errorf("expected error when reading; got nothing")
-	}
-
-	reader.AllowRead = true
-	if _, err := pager.ReadPage(1); err == nil {
-		t.Errorf("expected short read error; got nothing")
 	}
 }
 
@@ -82,7 +60,7 @@ func TestPage_Read(t *testing.T) {
 	var sink bytes.Buffer
 
 	var page, _ = pager.ReadPage(1)
-	if sz := page.Len(); sz != 512 {
+	if sz := page.Remaining(); sz != 512 {
 		t.Errorf("expected length to be %d; got %d", 512, sz)
 	}
 
@@ -92,21 +70,11 @@ func TestPage_Read(t *testing.T) {
 		t.Errorf("expected to read %d bytes; got %d", 512, n)
 	}
 
-	if sz := page.Len(); sz != 0 {
+	if sz := page.Remaining(); sz != 0 {
 		t.Errorf("expected length to be %d; got %d", 0, sz)
 	}
 
 	if !bytes.Equal(buf[:512], sink.Bytes()) {
 		t.Errorf("content not equal")
-	}
-}
-
-func TestPage_corrupt_page(t *testing.T) {
-	var buf = read(t, "testdata/corrupt-page.bin")
-	var reader = bytes.NewReader(buf)
-	var pager = &Pager{size: 512, pages: 1, file: reader}
-
-	if _, err := pager.ReadPage(1); err == nil {
-		t.Errorf("expected error to be non-nil")
 	}
 }

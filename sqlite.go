@@ -79,13 +79,18 @@ type File struct {
 	Header Header // sqlite3 database header; see: https://www.sqlite.org/fileformat.html#the_database_header
 
 	//-  start of internal state
-	file   io.ReadSeeker // the underlying file reference
+	file   *os.File // the underlying file reference
 	closer io.Closer
 	Pager  *Pager // pager used to fetch pages
 }
 
 // Open reads the stream from f as a sqlite database file.
-func Open(f io.ReadSeekCloser) (_ *File, err error) {
+func Open(name string) (_ *File, err error) {
+	var f *os.File
+	if f, err = os.Open(name); err != nil {
+		return nil, err
+	}
+
 	var header Header
 	if err = binary.Read(f, binary.BigEndian, &header); err != nil {
 		return nil, err
@@ -121,15 +126,6 @@ func Open(f io.ReadSeekCloser) (_ *File, err error) {
 
 	var file = &File{Header: header, Pager: pager, file: f, closer: f}
 	return file, nil
-}
-
-func OpenFile(name string) (_ *File, err error) {
-	var file *os.File
-	if file, err = os.Open(name); err != nil {
-		return nil, err
-	}
-
-	return Open(file)
 }
 
 // NumPages returns the number of pages in the database

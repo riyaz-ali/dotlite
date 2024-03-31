@@ -5,7 +5,7 @@ import (
 )
 
 func open(t *testing.T, name string) *File {
-	var file, err = OpenFile(name)
+	var file, err = Open(name)
 	if err != nil {
 		t.Errorf("failed to open file: %v", err)
 	}
@@ -31,7 +31,7 @@ func TestOpen(t *testing.T) {
 }
 
 func TestOpen_invalid_magic(t *testing.T) {
-	if _, err := OpenFile("testdata/not-a-database.txt"); err == nil {
+	if _, err := Open("testdata/not-a-database.txt"); err == nil {
 		t.Errorf("expected invalid magic error")
 	}
 }
